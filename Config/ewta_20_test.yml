@@ -1,0 +1,17 @@
+batch_size: 20
+cpi: 2
+data_name: SID_Test_20
+data_root: Data/
+device: cuda
+dim_out: 2
+early_stopping: 0
+epoch: 20
+fc_input: 4608
+input_channel: 10
+label_csv: all_data.csv
+model_path: Model/ewta_20m_20
+num_components: 20
+past: 4
+validation_prop: 0.2
+with_T: false
+zip_path: Data/SID_Test_20.zip
