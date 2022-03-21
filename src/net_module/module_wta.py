@@ -47,28 +47,6 @@ class MultiHypothesisModule(nn.Module):
         hypos = self.layer_hypos(x) # Bx(CxM)
         return hypos
 
-# XXX deprecated
-class AdaptiveSwarmModule(nn.Module):
-    """ 
-    Adaptive Swarm Module
-    Also output the weight of each hypo
-    """
-    def __init__(self, dim_fea, dim_out, num_swarms):
-        super(AdaptiveSwarmModule, self).__init__()
-        self.dim_fea = dim_fea
-        self.dim_out = dim_out # for one hypothesis
-        self.M = num_swarms
-
-        self.sfx = nn.Softmax(dim=1)
-        self.layer_hypos = nn.Linear(dim_fea, (dim_out+1)*num_swarms) # for hypotheses
-
-    def forward(self, x):
-        hypos = self.layer_hypos(x) # Bx((C+1)xM)
-        hyM = disassemble(hypos, self.M)
-        hyM[:,:,-1] = self.sfx(hyM[:,:,-1].clone())
-        hypos = assemble(hyM)
-
-        return hypos
 
 def assemble(hypos_M):
     nbatchs = hypos_M.shape[0]
