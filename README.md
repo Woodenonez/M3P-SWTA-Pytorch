@@ -10,7 +10,7 @@ This is a repository presenting multimodal motion prediction with multiple hypot
 #### Data
 Two evaluation sets are provided. <br />
 Eval 1: [Synthetic] Single-object Interaction Dataset ([SID](https://github.com/Woodenonez/MultimodalMotionPred_SamplingWTACGF_Pytorch/blob/main/src/data_handle/sid_object.py)). <br />
-Eval 2: [Realworld] Stanford Drone Dataset ([SDD](https://cvgl.stanford.edu/projects/uav_data/)).
+Eval 2: [Realworld] Stanford Drone Dataset ([SDD](https://cvgl.stanford.edu/projects/uav_data/)) ***GO TO BRANCH "sdd_test"***.
 
 #### Model
 The model is pre-trained.
