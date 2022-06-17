@@ -3,102 +3,86 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 
-import torch
 import torchvision
 
 from net_module.net import ConvMultiHypoNet
-from network_manager import NetworkManager
-from data_handle import data_handler_zip as dh
+from data_handle import data_handler as dh
+from data_handle import dataset as ds
 
 from util import utils_test
+from util import zfilter
 
-print("Program: animation\n")
+import pre_load
 
-### Customize
-past = 4
-cpi = 2
-dim_output = 2
-num_components = 20
-fc_input = 4608 # 98304, 386080
+print("Program: animation SDD\n")
 
-input_channel = (past+1)*cpi
+### Config
+root_dir = Path(__file__).parents[1]
 
-model_path1 = os.path.join(Path(__file__).parents[1], 'Model/ewta_20m_20')
-model_path2 = os.path.join(Path(__file__).parents[1], 'Model/awta_20m_20')
-model_path3 = os.path.join(Path(__file__).parents[1], 'Model/swta_20m_20')
-model_path_list = [model_path1, model_path2, model_path3]
-name_list = ['EWTA', 'AWTA', 'SWTA']
+config_file1 = 'sdd_15_ewta_test.yml'
+config_file2 = 'sdd_15_awta_test.yml'
+config_file3 = 'sdd_15_swta_test.yml'
+config_file_list = [config_file1, config_file2, config_file3]
 
-zip_path  = os.path.join(Path(__file__).parents[1], 'Data/SID_Test_20.zip')
-csv_path  = 'SID_Test_20/all_data.csv'
-data_dir  = 'SID_Test_20/'
-
-idx_start = 200
-idx_end = 786
-pause_time = 0
-
-### Prepare data
+data_from_zip = False
 composed = torchvision.transforms.Compose([dh.ToTensor()])
-dataset = dh.ImageStackDataset(zip_path, csv_path, data_dir, channel_per_image=cpi, transform=composed)
-print("Data prepared. #Samples:{}.".format(len(dataset)))
-print('Sample: {\'image\':',dataset[0]['image'].shape,'\'label\':',dataset[0]['label'],'}')
+Dataset = ds.ImageStackDataset
+Net = ConvMultiHypoNet
+PRED_OFFSET = 15
 
-### Initialize the model
-mynet_list = []
-for model_path in model_path_list:
-    net = ConvMultiHypoNet(input_channel, dim_output, fc_input, num_components=num_components)
-    myNet = NetworkManager(net, loss_function_dict={}, verbose=False)
-    myNet.build_Network()
-    myNet.model.load_state_dict(torch.load(model_path))
-    myNet.model.eval() # with BN layer, must run eval first
-    mynet_list.append(myNet)
+### Prepare
+net_list = []
+for config_f in config_file_list:
+    dataset, _, net = pre_load.main_test_pre(root_dir, config_f, Dataset, data_from_zip, composed, Net)
+    net_list.append(net)
+num_net = len(config_file_list)
+
+### Visualization option
+idx_start = 50
+idx_end = len(dataset)
+pause_time = 0.1
 
 ### Visualize
-fig, axes = plt.subplots(1,3)
-idc = np.linspace(idx_start,idx_end,num=idx_end-idx_start).astype('int') 
+fig, axes = plt.subplots(1, num_net)
+idc = np.linspace(idx_start,idx_end,num=idx_end-idx_start).astype('int')
 for idx in idc:
 
     [ax.cla() for ax in axes]
-    
-    img   = dataset[idx]['image']
-    label = dataset[idx]['label'] * 1
-    traj  = np.array(dataset[idx]['traj'])
-    index = dataset[idx]['index']
 
-    hypo_list = []
-    for myNet in mynet_list:
-        hyposM = myNet.inference(img)
-        hypo_list.append(hyposM)
+    hyposM_list = []
+    for net in net_list:
+        img, label, traj, index, hyposM, ref = pre_load.main_test(dataset, net, idx=idx)
+        hyposM_list.append(hyposM)
+    traj = np.array(traj)
+    label_transpose = np.zeros_like(np.array(label))
+    label_transpose[:,0] = label[:,1]
+    label_transpose[:,1] = label[:,0]
+    traj_transpose = np.zeros_like(traj)
+    traj_transpose[:,0] = traj[:,1]
+    traj_transpose[:,1] = traj[:,0]
+    print(index, idx)
 
-    ### DBSCAN - Density-Based Spatial Clustering of Applications with Noise
-    cluster_list = []
-    for hyposM in hypo_list:
-        hypos_clusters = utils_test.fit_DBSCAN(hyposM[0], eps=0.5, min_sample=3)
-        cluster_list.append(hypos_clusters)
-    ###
+    ### Kalman filter
+    P0 = zfilter.fill_diag((1,1,1,1))
+    Q  = zfilter.fill_diag((0.1,0.1,0.1,0.1))
+    R  = zfilter.fill_diag((0.1,0.1))
+    KF_X, KF_P = utils_test.fit_KF(zfilter.model_CV, traj_transpose, P0, Q, R, PRED_OFFSET)
 
-    ### Gaussian fitting
-    for i, hypos_clusters in enumerate(cluster_list):
+    title_list = ['EWTA', 'AWTA', 'SWTA']
+    for hyposM, ax, title in zip(hyposM_list, axes, title_list):
+        hypos_transpose = np.zeros_like(hyposM[0])
+        hypos_transpose[:,0] = hyposM[0,:,1]
+        hypos_transpose[:,1] = hyposM[0,:,0]
+        hypos_clusters    = utils_test.fit_DBSCAN(hypos_transpose, eps=10, min_sample=3) # DBSCAN
         mu_list, std_list = utils_test.fit_cluster2gaussian(hypos_clusters) # Gaussian fitting
-        for mu, std in zip(mu_list, std_list):
-            patch = patches.Ellipse(mu, 3*std[0], 3*std[1], fc='y', zorder=0)
-            axes[i].add_patch(patch)
-    ###
-
-    for ax, hyposM in zip(axes, hypo_list):
-        utils_test.plot_on_simmap(ax, dataset[idx], hyposM[0,:,:])
-
-    for i, ax in enumerate(axes):
-        for j, hc in enumerate(cluster_list[i]):
-            ax.scatter(hc[:,0], hc[:,1], marker='x', label=f"est{j+1}")
-        ax.set_xlabel("x [m]", fontsize=14)
-        ax.set_ylabel("y [m]", fontsize=14)
-        ax.legend()
-        ax.legend(prop={'size': 18}, loc='upper right')
-        ax.axis('equal')
-        ax.set_title(name_list[i], fontsize=24)
+        ax.imshow(ref.transpose(0,1)) # show colored background
+        # ax.imshow(img[-1,:].transpose(0,1), cmap='gray') # show gray-scale background
+        utils_test.plot_Gaussian_ellipses(ax, mu_list, std_list)
+        utils_test.plot_markers(ax, label_transpose[0], traj_transpose, hypos_transpose[np.newaxis,:,:], hypos_clusters)
+        utils_test.set_axis(ax, title=title, y_label=title_list.index(title)==0)
+    
+    utils_test.plot_KF(axes[0], KF_X, KF_P)
 
     if idx == idc[-1]:
         plt.text(5,5,'Done!',fontsize=20)
@@ -109,4 +93,5 @@ for idx in idc:
         plt.pause(pause_time)
 
 plt.show()
+
 

@@ -10,8 +10,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-from util import utils_data
-from data_handle import sid_object
+# from data_handle import sid_object
+from util import zfilter
 
 def kernel_Gaussian(X, Mu=[0,0], Sigma=[[0.05,0],[0,0.05]]):
     X = np.array(X).reshape(-1,1)
@@ -130,6 +130,20 @@ def draw_probDistribution(ax, alp, mu, sigma, nsigma=3, step=0.5, colorbar=False
 
     return xx,yy,pp
 
+def fit_KF(model, traj, P0, Q, R, pred_T):
+    X0 = np.array([[traj[0,0], traj[0,1], 0, 0]]).transpose()
+    kf_model = model(X0, Ts=1)
+    KF = zfilter.KalmanFilter(kf_model, P0, Q, R)
+    Y = [np.array(traj[1,:]), np.array(traj[2,:]), 
+         np.array(traj[3,:]), np.array(traj[4,:])]
+    for kf_i in range(len(Y) + pred_T):
+        if kf_i<len(Y):
+            KF.one_step(np.array([[0]]), np.array(Y[kf_i]).reshape(2,1))
+        else:
+            KF.predict(np.array([[0]]), evolve_P=False)
+            KF.append_state(KF.X)
+    return KF.X, KF.P
+
 def fit_DBSCAN(data, eps, min_sample):
     # data = np.array([[],[],[]])
     clustering = DBSCAN(eps=eps, min_samples=min_sample).fit(data)
@@ -150,40 +164,28 @@ def fit_cluster2gaussian(clusters):
         std_list.append(np.std(cluster, axis=0))
     return mu_list, std_list
 
+
+def plot_markers(ax, label, traj, hypos, clusters):
+    ax.plot(traj[-1,0], traj[-1,1], 'ko', label='current position')
+    ax.plot(traj[:-1,0], traj[:-1,1], 'k.') # past
+    ax.plot(hypos[:,:,0], hypos[:,:,1], 'r.')
+    for i, hc in enumerate(clusters):
+        ax.plot(hc[:,0], hc[:,1], 'x', label=f"cluster {i+1}")
+    ax.plot(label[0], label[1], 'mo', label="ground truth")
+
+def plot_KF(ax, X, P, nsigma=3):
+    ax.plot(X[0], X[1], 'mx', label='KF')
+    ax.add_patch(patches.Ellipse(X[:2], nsigma*P[0,0], nsigma*P[1,1], fc='g', zorder=0))
+
 def plot_Gaussian_ellipses(ax, mu_list, std_list, alpha=None, label=None):
     for mu, std in zip(mu_list, std_list):
-        patch = patches.Ellipse(mu, std[0], std[1], fc='y', ec='purple', alpha=alpha, label=label)
+        patch = patches.Ellipse(mu, std[0]*3, std[1]*3, fc='y', ec='purple', alpha=alpha, label=label)
         ax.add_patch(patch)
 
-def plot_mdn_output(ax, alpha, mu, sigma):
-    ax.plot(mu[0,0], mu[0,1], 'ro', label='est')
-    patch = patches.Ellipse(mu[0,:], sigma[0,0], sigma[0,1], fc='y')
-    ax.add_patch(patch)
-    for i in range(len(alpha)-1):
-        if alpha[i+1] > 0:
-            ax.plot(mu[i+1,0], mu[i+1,1], 'ro')
-            patch = patches.Ellipse(mu[i+1,:], sigma[i+1,0], sigma[i+1,1], fc='y')
-            ax.add_patch(patch)
-
-def plot_on_simmap(ax, sample, hyposM, label_scale=1, plot_other=True):
-    label = sample['label'] * label_scale
-    traj  = np.array(sample['traj'])
-    scene_index = sample['index']
-    time_step = sample['time']
-
-    map_idx, path_idx, interact = utils_data.index2map(scene_index) # map parameters
-    stagger, vmax, target_size, ts = (0.2, 1, 0.5, 0.2)   # object parameters
-
-    graph = sid_object.Graph(map_idx, block=False)
-    graph.plot_map(ax, clean=1)
-    if interact & plot_other:
-        obs_pos = graph.get_obs_path(ts=ts, start=10-time_step*ts)
-        ax.plot(obs_pos[0][0], obs_pos[0][1], 'r^', label='other')
-
-    ax.plot(traj[-1,0], traj[-1,1], 'ko', label='target')
-    ax.plot(traj[:-1,0], traj[:-1,1], 'k.') # past
-    ax.plot(label[0], label[1], 'bo', label="GT")
-    if hyposM is not None:
-        ax.scatter(hyposM[:,0], hyposM[:,1], c='r', marker='.', label="est")
-
-def plot_on_realmap(): pass
+def set_axis(ax, title, y_label=True):
+    ax.set_xlabel("x [m]", fontsize=14)
+    if y_label:
+        ax.set_ylabel("y [m]", fontsize=14)
+    ax.axis('equal')
+    ax.legend(prop={'size': 18}, loc='upper right')
+    ax.set_title(title, fontsize=24)

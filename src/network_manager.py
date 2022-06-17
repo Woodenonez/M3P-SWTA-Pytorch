@@ -10,12 +10,13 @@ import torch.optim as optim
 from timeit import default_timer as timer
 from datetime import timedelta
 
+'''
+'''
+
 class NetworkManager():
-    """ 
-    
-    """
+
     def __init__(self, net, loss_function_dict:dict, early_stopping=0, device='cuda', checkpoint_dir=None, verbose=True):
-        assert(isinstance(loss_function_dict, dict)),('The "loss_function_list" should be a list.')
+        assert(isinstance(loss_function_dict, dict)),('The "loss_function_dict" should be a dict.')
         self.vb = verbose
         
         self.lr = 1e-4      # learning rate
@@ -38,8 +39,6 @@ class NetworkManager():
         self.save_dir = checkpoint_dir
 
         self.complete = False
-        # self.tracker = []
-        # self.grad_tracker = []
 
         self.training_time(None, None, None, init=True)
 
@@ -59,8 +58,6 @@ class NetworkManager():
     def build_Network(self):
         self.gen_Model()
         self.gen_Optimizer(self.model.parameters())
-        if self.vb:
-            print(self.model)
 
     def gen_Model(self):
         self.model = nn.Sequential()
@@ -77,7 +74,6 @@ class NetworkManager():
 
     def gen_Optimizer(self, parameters):
         self.optimizer = optim.Adam(parameters, lr=self.lr, weight_decay=self.w_decay, betas=(0.99, 0.999))
-        # self.optimizer = optim.SGD(parameters, lr=1e-3, momentum=0.9)
         self.lr_scheduler = optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=0.99)
         return self.optimizer
 
@@ -88,12 +84,12 @@ class NetworkManager():
             device = 'cpu'
         with torch.no_grad():
             if mdn:
-                alp, mu, sigma = self.model(data.unsqueeze(0).float().to(device))
-                alp = alp[0].cpu().detach().numpy()
-                mu  = mu[0].cpu().detach().numpy()
-                sigma = sigma[0].cpu().detach().numpy()
+                alp, mu, sigma = self.model(data.float().to(device))
+                alp = alp.cpu().detach().numpy()
+                mu  = mu.cpu().detach().numpy()
+                sigma = sigma.cpu().detach().numpy()
                 return alp, mu, sigma
-            hypos = self.model(data.unsqueeze(0).float().to(device)).cpu().detach()
+            hypos = self.model(data.float().to(device)).cpu().detach()
         hyposM = hypos.reshape(hypos.shape[0],self.M,-1).numpy() # BxMxC
         return hyposM
 
@@ -142,8 +138,6 @@ class NetworkManager():
                 loss = self.train_batch(batch, label, loss_function=loss_epoch, k_top=k_top) # train here
                 self.Loss.append(loss.item())
 
-                self.batch_time.append(timer()-batch_time_start)  ### TIMER
-
                 if len(data_val)>0 & (cnt_per_epoch%val_after_batch==0):
                     del batch
                     del label
@@ -161,6 +155,8 @@ class NetworkManager():
                     del val_label
                     if val_loss < min_val_loss_epoch:
                         min_val_loss_epoch = val_loss
+
+                self.batch_time.append(timer()-batch_time_start)  ### TIMER
 
                 if np.isnan(loss.item()): # assert(~np.isnan(loss.item())),("Loss goes to NaN!")
                     print(f"Loss goes to NaN! Fail after {cnt} batches.")
@@ -191,8 +187,9 @@ class NetworkManager():
             self.epoch_time.append(timer()-epoch_time_start)  ### TIMER
             self.lr_scheduler.step()
 
-            save_path = os.path.join(self.save_dir, f'model_ckp_{ep}.pt')
-            self.save_checkpoint(self.model, self.optimizer, save_path, epoch=ep, loss=loss)
+            if self.save_dir is not None:
+                save_path = os.path.join(self.save_dir, f'model_ckp_{ep}.pt')
+                self.save_checkpoint(self.model, self.optimizer, save_path, epoch=ep, loss=loss)
 
             print() # end while
         self.complete = True

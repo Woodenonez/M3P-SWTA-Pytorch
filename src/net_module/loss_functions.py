@@ -16,7 +16,8 @@ def meta_loss(hypos, M, labels, loss, k_top=1, relax=0): # for batch per step
     gt = labels # tensor - BxC
 
     hyM = module_wta.disassemble(hy, M) # BxMxC
-    gts = torch.stack([gt for _ in range(M)], axis=1)
+    # gts = torch.stack([gt for _ in range(M)], axis=1)
+    gts = gt.repeat(1, M, 1)
 
     D = loss(hyM, gts) # BxM
 
@@ -43,7 +44,8 @@ def ameta_loss(hypos, M, labels, loss, k_top): # for batch per step
     hy = hypos  # tensor - Mx[BxC] - [ts[1,..,C*M],...,ts[1,..,C*M]]
     gt = labels # tensor - BxC
     hyM = module_wta.disassemble(hy, M) # BxMxC
-    gts = torch.stack([gt for _ in range(M)], axis=1)
+    # gts = torch.stack([gt for _ in range(M)], axis=1)
+    gts = gt.repeat(1, M, 1)
 
     D = loss(hyM, gts) # BxM
 
@@ -109,6 +111,7 @@ def cal_multiGauProb(alp, mu, sigma, x):
     prob = torch.sum(prob, dim=1) # Bx1, overall prob for each batch (sum is for all compos)
     return prob
 
+
 def loss_NLL(alp, mu, sigma, data):
     '''
     Description:
@@ -121,6 +124,7 @@ def loss_NLL(alp, mu, sigma, data):
     Return:
         NLL <value> - The negative log-likelihood loss.
     '''
+    alp = alp/torch.sum(alp, dim=1) #normalization
     nll = -torch.log(cal_multiGauProb(alp, mu, sigma, data)) 
     return torch.mean(nll)
 
@@ -129,26 +133,30 @@ def loss_MaDist(alp, mu, sigma, data):
     Description:
         Calculates the weighted Mahalanobis distance.
     Arguments:
-        alp   (G)   - Component's weight.
-        mu    (GxC) - The means of the Gaussians. 
-        sigma (GxC) - The standard deviation of the Gaussians.
-        data  (C)   - A batch of data points.
+        alp   (BxG)   - Component's weight.
+        mu    (BxGxC) - The means of the Gaussians. 
+        sigma (BxGxC) - The standard deviation of the Gaussians.
+        data  (BxC)   - Batches of data points.
     Return:
         MD  <list>  - The MD of each component.
         WMD <value> - The weighted MD.
     '''
-    md = []
-    alp = alp/sum(alp) #normalization
-    for i in range(mu.shape[0]): # go through every component
-        mu0 = (data-mu[i,:]).unsqueeze(0) # (x-mu)
-        S_inv = torch.tensor([[1/sigma[i,0],0],[0,1/sigma[i,1]]]) # S^-1 inversed covariance matrix
-        md0 = torch.sqrt( S_inv[0,0]*mu0[0,0]**2 + S_inv[1,1]*mu0[0,1]**2 )
-        md.append(md0)
-    return torch.tensor(md), sum(torch.tensor(md)*alp)
+    alp = alp/torch.sum(alp, dim=1) #normalization
+    mu0 = (data.expand_as(mu)-mu) # (x-mu)
+    S_inv_1 = 1/sigma[:,:,0] # S^-1 inversed covariance matrix
+    S_inv_2 = 1/sigma[:,:,1]
+    md = torch.sqrt( S_inv_1*mu0[:,:,0]**2 + S_inv_2*mu0[:,:,1]**2 ) # BxG
+    return md, torch.sum(md*alp, dim=1)
 
 def loss_CentralOracle(mu, data):
-    mse = torch.sum((mu - data.unsqueeze(0))**2, dim=1)
-    return torch.min(mse)
+    '''
+    Arguments:
+        mu    (BxGxC) - The means of the Gaussians. 
+        data  (BxC)   - Batches of data points.
+    '''
+    mse = torch.sum((mu - data.expand_as(mu))**2, dim=2) # BxG
+    return torch.min(mse, dim=1).values
+
 
 def loss_mse(data, labels): # for batch
     # data, labels - BxMxC
