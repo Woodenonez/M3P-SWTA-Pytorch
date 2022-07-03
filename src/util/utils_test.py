@@ -180,10 +180,10 @@ def plot_on_simmap(ax, sample, hyposM, label_scale=1, plot_other=True):
         obs_pos = graph.get_obs_path(ts=ts, start=10-time_step*ts)
         ax.plot(obs_pos[0][0], obs_pos[0][1], 'r^', label='other')
 
-    ax.plot(traj[-1,0], traj[-1,1], 'ko', label='target')
+    ax.plot(traj[-1,0], traj[-1,1], 'ko', label='current position')
     ax.plot(traj[:-1,0], traj[:-1,1], 'k.') # past
-    ax.plot(label[0], label[1], 'bo', label="GT")
+    ax.plot(label[0], label[1], 'bo', label='ground truth')
     if hyposM is not None:
-        ax.scatter(hyposM[:,0], hyposM[:,1], c='r', marker='.', label="est")
+        ax.scatter(hyposM[:,0], hyposM[:,1], c='r', marker='.', label="estimation")
 
 def plot_on_realmap(): pass

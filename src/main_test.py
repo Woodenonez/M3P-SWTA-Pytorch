@@ -41,7 +41,7 @@ print("Save to", model_path)
 ### Visualization option
 idx_start = 0
 idx_end = 786
-pause_time = 0.1
+pause_time = 0
 
 ### Prepare data
 composed = torchvision.transforms.Compose([dh.ToTensor()])
@@ -97,10 +97,10 @@ for idx in idc:
     # utils_test.plot_mdn_output(ax, alpha, mu, sigma)
 
     for i, hc in enumerate(hypos_clusters):
-        ax.scatter(hc[:,0], hc[:,1], marker='x', label=f"est{i+1}")
+        ax.scatter(hc[:,0], hc[:,1], marker='x', label=f"cluster {i+1}")
 
-    plt.plot(KF.X[0], KF.X[1], 'mo', label='KF')
-    ax.add_patch(patches.Ellipse(KF.X[:2], 3*KF.P[0,0], 3*KF.P[1,1], fc='g', zorder=0))
+    # plt.plot(KF.X[0], KF.X[1], 'mo', label='KF')
+    # ax.add_patch(patches.Ellipse(KF.X[:2], 3*KF.P[0,0], 3*KF.P[1,1], fc='g', zorder=0))
 
     plt.xlabel("x [m]", fontsize=14)
     plt.ylabel("y [m]", fontsize=14)
